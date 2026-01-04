@@ -97,9 +97,19 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                 optimizer.zero_grad()
                 if model_ema is not None:
                     model_ema.update(model)
-            loss_scale_value = loss_scaler.state_dict()["scale"]
+            #loss_scale_value = loss_scaler.state_dict()["scale"]
+            loss_scale_value = None
+            if loss_scaler is not None:
+                try:
+                    sd = loss_scaler.state_dict()
+                    loss_scale_value = sd.get("scale", None)
+                except Exception:
+                    loss_scale_value = None
 
-        torch.cuda.synchronize()
+
+        #torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
 
         if mixup_fn is None:
             class_acc = (output.max(-1)[-1] == targets).float().mean()
@@ -161,17 +171,21 @@ def validation_one_epoch(data_loader, model, device):
             output = model(videos)
             loss = criterion(output, target)
 
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        #acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        acc1= accuracy(output, target, topk=(1,))
+        acc5=None
 
         batch_size = videos.shape[0]
         metric_logger.update(loss=loss.item())
+        acc1=acc1[0]
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
-        metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+        #metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
-          .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
-
+    #print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
+    print(f"* Acc@1 {metric_logger.acc1.global_avg:.3f}"
+    #      .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
+            .format(top1=metric_logger.acc1))
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
@@ -208,28 +222,99 @@ def final_test(data_loader, model, device, file):
                                                 str(int(chunk_nb[i].cpu().numpy())), \
                                                 str(int(split_nb[i].cpu().numpy())))
             final_result.append(string)
-
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
-
+        #changed acc
+        acc1 = accuracy(output, target, topk=(1,))
+        acc5=None
         batch_size = videos.shape[0]
         metric_logger.update(loss=loss.item())
+        acc1=acc1[0]
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
-        metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+        #metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
 
     if not os.path.exists(file):
-        os.mknod(file)
+        #os.mknod(file)
+        os.makedirs(os.path.dirname(file),exist_ok=True)
     with open(file, 'w') as f:
-        f.write("{}, {}\n".format(acc1, acc5))
+        #f.write("{}, {}\n".format(acc1, acc5))
+        f.write("{}\n".format(acc1))
         for line in final_result:
             f.write(line)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
-          .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
-
+    #print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
+          #.format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
+    print(f"* Acc@1 {metric_logger.acc1.global_avg:.3f}"
+            .format(top1=metric_logger.acc1))
+    
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
+'''@torch.no_grad()
+def final_test(data_loader, model, device, file):
 
+    criterion = torch.nn.CrossEntropyLoss()
+
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    header = 'Test:'
+
+    # evaluation mode
+    model.eval()
+    final_result = []
+
+    acc1_last = 0.0  
+    acc5_last = 0.0  
+
+    for batch in metric_logger.log_every(data_loader, 10, header):
+        videos = batch[0]
+        target = batch[1]
+        ids = batch[2]
+        chunk_nb = batch[3]
+        split_nb = batch[4]
+
+        videos = videos.to(device, non_blocking=True)
+        target = target.to(device, non_blocking=True)
+
+        output = model(videos)
+        loss = criterion(output, target)
+
+        for i in range(output.size(0)):
+            string = "{} {} {} {} {}\n".format(
+                ids[i],
+                str(output.data[i].cpu().numpy().tolist()),
+                str(int(target[i].cpu().numpy())),
+                str(int(chunk_nb[i].cpu().numpy())),
+                str(int(split_nb[i].cpu().numpy()))
+            )
+            final_result.append(string)
+
+        acc1, acc5 = accuracy(output, target, topk=(1,))
+        batch_size = videos.shape[0]
+
+        acc1_val = acc1[0].item()
+        acc5_val = acc5[0].item()
+
+        acc1_last = acc1_val
+        acc5_last = acc5_val
+
+        metric_logger.update(loss=loss.item())
+        metric_logger.meters['acc1'].update(acc1_val, n=batch_size)
+        metric_logger.meters['acc5'].update(acc5_val, n=batch_size)
+
+    with open(file, 'w', encoding="utf-8") as f:
+        
+        f.write("acc1_last, acc5_last = {}, {}\n".format(acc1_last, acc5_last))
+        for line in final_result:
+            f.write(line)
+
+    metric_logger.synchronize_between_processes()
+
+    print(
+        f"* Acc@1 {metric_logger.acc1.global_avg:.3f} "
+        f"Acc@5 {metric_logger.acc5.global_avg:.3f} "
+        f"loss {metric_logger.loss.global_avg:.3f}"
+    )
+
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+'''
 def merge(eval_path, num_tasks):
     dict_feats = {}
     dict_label = {}

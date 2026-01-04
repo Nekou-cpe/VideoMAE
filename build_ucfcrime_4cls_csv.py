@@ -3,7 +3,7 @@ import os
 # ======= تنظیم مسیرها (اینا رو با مسیرهای خودت چک کن) =======
 
 # ریشه ویدیوها (جایی که پوشه‌های Arson, Explosion, ... هستند)
-VIDEO_ROOT = r"D:\datasets\UCF-Crime\videos"
+VIDEO_ROOT = r"D:\final_project\datasets\UCF_Crime"
 
 # جایی که train_001.txt و test_001.txt هستند
 SPLIT_ROOT = r"D:\final_project\datasets\UCF_Crime\annotations\Action_Regnition_splits"
