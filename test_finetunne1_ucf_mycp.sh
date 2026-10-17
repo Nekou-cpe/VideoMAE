@@ -21,3 +21,21 @@ python run_class_finetuning.py `
   --warmup_epochs 0 `
   --warmup_steps -1 `
   --disable_eval_during_finetuning 
+--------------
+python run_class_finetuning.py `
+  --data_path "D:\mae_umil\VideoMAE-main\data\UCF_Crime" `
+  --eval_data_path "D:\mae_umil\VideoMAE-main\data\UCF_Crime" `
+  --output_dir "D:\mae_umil\VideoMAE-main\checkpoints" `
+  --model vit_base_patch16_224 `
+  --batch_size 16 `
+  --epochs 40 `
+  --num_frames 16 `
+  --sampling_rate 2 `
+  --input_size 224 `
+  --short_side_size 224 `
+  --nb_classes 4 `
+  --num_workers 2 `
+  --test_num_segment 1 `
+  --test_num_crop 3 `
+  --finetune "D:\mae_umil\VideoMAE-main\checkpoints\k400_vitb_e800_finetune.pth" `
+  2>&1 | Tee-Object -FilePath "train_log.txt"
